@@ -528,6 +528,12 @@ export default function FileManager() {
   const handleRename = async () => {
     if (!renamingFile || !newName.trim()) return
 
+    // Check if name actually changed
+    if (newName.trim() === renamingFile.name) {
+      cancelRename()
+      return
+    }
+
     try {
       const response = await fetch('/filemanager/api/files/rename', {
         method: 'POST',
@@ -908,39 +914,41 @@ export default function FileManager() {
                               />
                             </TableCell>
                             <TableCell>
-                              <div className="flex items-center gap-2">
-                                <IconComponent className={`w-4 h-4 ${iconColor}`} />
-                                {renamingFile?.path === file.path ? (
-                                  <div className="flex items-center gap-1 flex-1">
-                                    <Input
-                                      value={newName}
-                                      onChange={(e) => setNewName(e.target.value)}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          handleRename()
-                                        } else if (e.key === 'Escape') {
-                                          cancelRename()
-                                        }
-                                      }}
-                                      onBlur={handleRename}
-                                      className="h-7 text-sm"
-                                      autoFocus
-                                      ref={(el) => el?.select()}
-                                    />
-                                  </div>
-                                ) : (
-                                  <span
-                                    className={`cursor-pointer hover:underline ${iconColor} ${
-                                      file.isDirectory ? 'font-medium' : ''
-                                    }`}
+                              {renamingFile?.path === file.path ? (
+                                <div className="flex items-center gap-1">
+                                  <IconComponent className={`w-4 h-4 ${iconColor}`} />
+                                  <Input
+                                    value={newName}
+                                    onChange={(e) => setNewName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        handleRename()
+                                      } else if (e.key === 'Escape') {
+                                        cancelRename()
+                                      }
+                                    }}
+                                    onBlur={handleRename}
+                                    className="h-7 text-sm"
+                                    autoFocus
+                                    ref={(el) => el?.select()}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <IconComponent 
+                                    className={`w-4 h-4 ${iconColor} cursor-pointer hover:opacity-80`}
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       if (file.isDirectory) {
                                         navigateToFolder(file)
-                                      } else {
-                                        startRename(file)
                                       }
                                     }}
+                                    title={file.isDirectory ? "Open folder" : "File"}
+                                  />
+                                  <span
+                                    className={`cursor-pointer hover:underline ${iconColor} ${
+                                      file.isDirectory ? 'font-medium' : ''
+                                    }`}
                                     onDoubleClick={(e) => {
                                       e.stopPropagation()
                                       startRename(file)
@@ -948,8 +956,8 @@ export default function FileManager() {
                                   >
                                     {file.name}
                                   </span>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </TableCell>
                             <TableCell>
                               {file.isDirectory ? '-' : formatFileSize(file.size)}
