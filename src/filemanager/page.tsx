@@ -111,6 +111,8 @@ export default function FileManager() {
   const [copyDialogOpen, setCopyDialogOpen] = useState(false)
   const [targetPath, setTargetPath] = useState('')
   const [availableFolders, setAvailableFolders] = useState<string[]>([])
+  const [renamingFile, setRenamingFile] = useState<FileItem | null>(null)
+  const [newName, setNewName] = useState('')
   const { toast } = useToast()
 
   const loadFiles = async (path: string = '') => {
@@ -518,12 +520,81 @@ export default function FileManager() {
     }
   }
 
+  const startRename = (file: FileItem) => {
+    setRenamingFile(file)
+    setNewName(file.name)
+  }
+
+  const handleRename = async () => {
+    if (!renamingFile || !newName.trim()) return
+
+    try {
+      const response = await fetch('/filemanager/api/files/rename', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          oldPath: renamingFile.path,
+          newName: newName.trim(),
+          isDirectory: renamingFile.isDirectory,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Rename failed')
+      }
+
+      toast({
+        title: "Success",
+        description: `${renamingFile.isDirectory ? 'Folder' : 'File'} renamed successfully`,
+      })
+      setRenamingFile(null)
+      setNewName('')
+      await loadFiles(currentPath)
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Rename failed",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const cancelRename = () => {
+    setRenamingFile(null)
+    setNewName('')
+  }
+
   const toggleItemSelection = (itemPath: string) => {
     setSelectedItems(prev => 
       prev.includes(itemPath) 
         ? prev.filter(p => p !== itemPath)
         : [...prev, itemPath]
     )
+  }
+
+  const toggleSelectAll = () => {
+    const allFilePaths = files.map(file => file.path)
+    const allSelected = allFilePaths.every(path => selectedItems.includes(path))
+    
+    if (allSelected) {
+      // Deselect all
+      setSelectedItems([])
+    } else {
+      // Select all
+      setSelectedItems(allFilePaths)
+    }
+  }
+
+  const getSelectAllState = () => {
+    if (files.length === 0) return 'unchecked'
+    const allFilePaths = files.map(file => file.path)
+    const selectedCount = allFilePaths.filter(path => selectedItems.includes(path)).length
+    
+    if (selectedCount === 0) return 'unchecked'
+    if (selectedCount === files.length) return 'checked'
+    return 'indeterminate'
   }
 
   const navigateToFolder = (folder: FileItem) => {
@@ -787,7 +858,20 @@ export default function FileManager() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-12"></TableHead>
+                      <TableHead className="w-12">
+                        <input
+                          type="checkbox"
+                          checked={getSelectAllState() === 'checked'}
+                          ref={(el) => {
+                            if (el) {
+                              el.indeterminate = getSelectAllState() === 'indeterminate'
+                            }
+                          }}
+                          onChange={toggleSelectAll}
+                          className="custom-checkbox"
+                          disabled={files.length === 0}
+                        />
+                      </TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Size</TableHead>
                       <TableHead>Modified</TableHead>
@@ -820,20 +904,51 @@ export default function FileManager() {
                                 type="checkbox"
                                 checked={selectedItems.includes(file.path)}
                                 onChange={() => toggleItemSelection(file.path)}
-                                className="rounded"
+                                className="custom-checkbox"
                               />
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <IconComponent className={`w-4 h-4 ${iconColor}`} />
-                                <span
-                                  className={`cursor-pointer hover:underline ${iconColor} ${
-                                    file.isDirectory ? 'font-medium' : ''
-                                  }`}
-                                  onClick={() => file.isDirectory && navigateToFolder(file)}
-                                >
-                                  {file.name}
-                                </span>
+                                {renamingFile?.path === file.path ? (
+                                  <div className="flex items-center gap-1 flex-1">
+                                    <Input
+                                      value={newName}
+                                      onChange={(e) => setNewName(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          handleRename()
+                                        } else if (e.key === 'Escape') {
+                                          cancelRename()
+                                        }
+                                      }}
+                                      onBlur={handleRename}
+                                      className="h-7 text-sm"
+                                      autoFocus
+                                      ref={(el) => el?.select()}
+                                    />
+                                  </div>
+                                ) : (
+                                  <span
+                                    className={`cursor-pointer hover:underline ${iconColor} ${
+                                      file.isDirectory ? 'font-medium' : ''
+                                    }`}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (file.isDirectory) {
+                                        navigateToFolder(file)
+                                      } else {
+                                        startRename(file)
+                                      }
+                                    }}
+                                    onDoubleClick={(e) => {
+                                      e.stopPropagation()
+                                      startRename(file)
+                                    }}
+                                  >
+                                    {file.name}
+                                  </span>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell>
@@ -844,6 +959,18 @@ export default function FileManager() {
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
+                                {renamingFile?.path !== file.path && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => startRename(file)}
+                                      title="Rename"
+                                    >
+                                      <EditIcon className="w-4 h-4" />
+                                    </Button>
+                                  </>
+                                )}
                                 {!file.isDirectory && (
                                   <>
                                     <Button
@@ -858,7 +985,7 @@ export default function FileManager() {
                                       size="sm"
                                       onClick={() => handleFileEdit(file)}
                                     >
-                                      <EditIcon className="w-4 h-4" />
+                                      <FileTextIcon className="w-4 h-4" />
                                     </Button>
                                   </>
                                 )}
